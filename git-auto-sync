@@ -1,0 +1,131 @@
+#!/bin/sh
+
+[ -d .git ] || { echo 'execute me in root repository dir (where .git subdir is located)!' 1>&2; exit 1; }
+
+D=.git/auto-sync
+mkdir -p $D
+
+local_change () {
+    git add -A
+    git commit -m 'x' || true
+
+    for p in $peers; do
+        git push $p +$lclbranch:$lclbranch
+    done
+}
+
+local_merge () {
+    local ml=$D/merge.log
+    local conflicted=0
+    for rmtbranch in $(git branch | cut -c3- | grep -v $lclbranch); do
+        git merge $rmtbranch > $ml 2>&1 || true
+        cat $ml
+        grep 'Cannot merge binary files:' $ml | \
+            cut -c37- | cut -d'(' -f1 | { 
+                conflicted=1
+                files=
+                while FS= read fn; do
+                    echo "conflict: $fn"
+                    rm $fn
+                    { git checkout $lclbranch $fn && mv $fn $fn.$lclbranch; } || git checkout $lclbranch $fn.$lclbranch
+                    { git checkout $rmtbranch $fn && mv $fn $fn.$rmtbranch; } || git checkout $rmtbranch $fn.$rmtbranch
+                    files="$files $fn"
+                done
+                git ls-files -u
+                git add -A
+                git commit -m "Merge branch '$rmtbranch' into '$lclbranch'; conflicts:$files"
+            } || true
+    done
+}
+
+init () {
+    set -e
+    [ "$1" = "--shallow" ] && { pullopts=--depth=1; shift; }
+    echo '* -diff' >> .git/info/attributes
+    echo "ref: refs/heads/$1" > .git/HEAD
+    echo "$1" > $D/branch
+    shift
+    echo "$*" > $D/peers
+    cat > .git/hooks/post-receive <<EOF
+#!/bin/sh
+touch auto-sync/remote-change
+rm auto-sync/block 2> /dev/null
+EOF
+    chmod +x .git/hooks/post-receive
+    lclbranch=$(cat $D/branch)
+    peers=$(cat $D/peers)
+    for p in $peers; do
+        git pull $pullopts $p && {
+            b=$(git branch | cut -c3- | head -n1)
+            git reset --hard
+            echo "initialized local branch $lclbranch from $p:$b"
+            break
+        }
+    done || { echo "warning: local branch $lclbranch not initialized properly"; exit 1; }
+}
+
+monitor_dir () {
+    local x
+    inotifywait -q -m -e CLOSE_WRITE -e DELETE -e MOVED_TO . | while read x; do
+        touch $D/local-change
+        unblock
+    done
+}
+
+block () {
+    inotifywait -q -e DELETE $D/block
+    touch $D/block
+}
+
+unblock () {
+    rm $D/block 2> /dev/null || true
+}
+
+once () {
+    lclbranch=$(cat $D/branch)
+    peers=$(cat $D/peers)
+
+    local_merge
+    local_change
+}
+
+run_with_inotify () {
+    lclbranch=$(cat $D/branch)
+    peers=$(cat $D/peers)
+
+    local_merge
+    local_change
+
+    monitor_dir &
+    monpid=$?
+    trap 'kill $monpid' EXIT
+
+    touch $D/block
+    while true; do
+        block
+        echo unblocked
+        if [ -e $D/local-change ]; then
+            rm $D/local-change
+            local_change
+        fi
+        if [ -e $D/remote-change ]; then
+            rm $D/remote-change
+            local_merge
+            local_change
+        fi
+    done
+}
+
+run_with_polling () {
+    local period=$1
+    [ "$period" = "" ] && { period=60; }
+    while true; do 
+        once
+        sleep $period
+    done
+}
+
+run () { run_with_inotify; }
+
+eval "$*"
+
