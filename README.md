@@ -23,7 +23,7 @@
         $ git-auto-sync init myname-master git://mycollaboratorsdomain/syncbox ...
 
     - use --shallow switch to perform shallow repository cloning (if
-      you don't need all the history).
+      you don't need all the history)
 
 - start git-daemon for your repository, for example:
 
@@ -46,7 +46,9 @@ If you don't have inotify-tools installed:
 
 ### Todo
 
-- full directory hierarchy synchronization instead of top directory only
+- when using inotify-tools for automatic detection of changes support
+  full directory hierarchy synchronization instead of top directory
+  only
 
 ### Related
 
