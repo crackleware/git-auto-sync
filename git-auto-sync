@@ -5,7 +5,7 @@
 D=.git/auto-sync
 mkdir -p $D
 
-local_change () {
+_local_change () {
     git add -A
     git commit -m 'x' || true
 
@@ -14,28 +14,40 @@ local_change () {
     done
 }
 
-local_merge () {
+_local_merge () {
     local ml=$D/merge.log
     local conflicted=0
     for rmtbranch in $(git branch | cut -c3- | grep -v $lclbranch); do
+        echo `pwd`: git merge $rmtbranch
         git merge $rmtbranch > $ml 2>&1 || true
         cat $ml
+        echo ===
         grep 'Cannot merge binary files:' $ml | \
             cut -c37- | cut -d'(' -f1 | { 
-                conflicted=1
                 files=
-                while FS= read fn; do
+                while read fn; do
                     echo "conflict: $fn"
+                    conflicted=1
                     rm $fn
                     { git checkout $lclbranch $fn && mv $fn $fn.$lclbranch; } || git checkout $lclbranch $fn.$lclbranch
                     { git checkout $rmtbranch $fn && mv $fn $fn.$rmtbranch; } || git checkout $rmtbranch $fn.$rmtbranch
                     files="$files $fn"
                 done
-                git ls-files -u
-                git add -A
-                git commit -m "Merge branch '$rmtbranch' into '$lclbranch'; conflicts:$files"
+                if [ "$conflicted" = "1" ]; then
+                    git ls-files -u
+                    git add -A
+                    git commit -m "Merge branch '$rmtbranch' into '$lclbranch'; conflicts:$files"
+                fi
             } || true
     done
+}
+
+_remote_change () {
+    peers=$(cat $D/peers)
+    for p in $peers; do
+        git fetch $* $p
+    done
+    #touch $D/remote-change
 }
 
 init () {
@@ -64,20 +76,20 @@ EOF
     done || { echo "warning: local branch $lclbranch not initialized properly"; exit 1; }
 }
 
-monitor_dir () {
+_monitor_dir () {
     local x
     inotifywait -q -m -e CLOSE_WRITE -e DELETE -e MOVED_TO . | while read x; do
         touch $D/local-change
-        unblock
+        _unblock
     done
 }
 
-block () {
+_block () {
     inotifywait -q -e DELETE $D/block
     touch $D/block
 }
 
-unblock () {
+_unblock () {
     rm $D/block 2> /dev/null || true
 }
 
@@ -85,42 +97,44 @@ once () {
     lclbranch=$(cat $D/branch)
     peers=$(cat $D/peers)
 
-    local_merge
-    local_change
+    [ "$1" != "--skip-remote-change" ] && _remote_change
+    _local_merge
+    _local_change
 }
 
 run_with_inotify () {
+    once
+
     lclbranch=$(cat $D/branch)
     peers=$(cat $D/peers)
 
-    local_merge
-    local_change
+    touch $D/block
 
-    monitor_dir &
+    _monitor_dir &
     monpid=$?
     trap 'kill $monpid' EXIT
 
-    touch $D/block
     while true; do
-        block
+        _block
         echo unblocked
         if [ -e $D/local-change ]; then
             rm $D/local-change
-            local_change
+            _local_change
         fi
         if [ -e $D/remote-change ]; then
             rm $D/remote-change
-            local_merge
-            local_change
+            _local_merge
+            _local_change
         fi
     done
 }
 
 run_with_polling () {
     local period=$1
+    shift
     [ "$period" = "" ] && { period=60; }
     while true; do 
-        once
+        once $*
         sleep $period
     done
 }
