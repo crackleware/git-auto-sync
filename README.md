@@ -55,7 +55,7 @@ If you don't have inotify-tools installed:
 
 #### Tests
 
-    $ cd tests; ./t2 start_daemon; ./t2 init; ./t2 run; ./t2 stop_daemon
+    $ cd tests; ./t2 test1 && ./t2 test2
 
 ### Todo
 
