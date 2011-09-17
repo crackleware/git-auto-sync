@@ -42,8 +42,8 @@ change the same file at roughly the same time, both file versions are
 preserved by automatic renaming (file -> file.branch1 and
 file.branch2).
 
-    - use "git-auto-sync run --periodic" to force periodic
-      synchronization together with instant on-change sync
+- use "git-auto-sync run --periodic" to force periodic synchronization
+  together with instant on-change sync
 
 If you don't have inotify-tools installed:
 
