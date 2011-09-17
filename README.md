@@ -42,6 +42,9 @@ change the same file at roughly the same time, both file versions are
 preserved by automatic renaming (file -> file.branch1 and
 file.branch2).
 
+    - use "git-auto-sync run --periodic" to force periodic
+      synchronization together with instant on-change sync
+
 If you don't have inotify-tools installed:
 
     $ cd GIT_REPO_DIR; git-auto-sync run_with_polling 60 # secs
@@ -57,7 +60,8 @@ If you don't have inotify-tools installed:
 ### Todo
 
 - better handling of failures
-- when using inotify-tools for automatic detection of changes support
+
+- when using inotify-tools for automatic detection of changes, support
   full directory hierarchy synchronization instead of top directory
   only
 
