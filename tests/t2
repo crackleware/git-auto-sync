@@ -1,0 +1,68 @@
+#!/bin/sh
+
+export D=$(pwd)
+export PATH=$(cd ..; pwd):$(pwd):$PATH
+
+. test-utils
+
+set -e
+
+daemon_port=39418
+collabs=$(seq 2)
+
+init () {
+    for i in $collabs; do
+        rm -rf $D/r$i || true
+    done
+    for i in $collabs; do
+        mkdir -p $D/r$i
+        cd $D/r$i
+        git init
+        git config user.name u$i
+        git config user.email u$i@domain
+        git-auto-sync init r$i-master $(peers $i 'echo git://127.0.0.1:$daemon_port/r$j') || true
+        if [ "$i" = "1" ]; then
+            touch 1st
+            git add 1st
+            git commit -m '1st'
+        fi
+    done
+}
+
+start_daemon () {
+    git daemon --verbose --export-all --base-path=$D --reuseaddr --pid-file=git-daemon.pid --listen=127.0.0.1 --port=$daemon_port --enable=receive-pack --detach
+}
+
+stop_daemon () {
+    xargs kill < git-daemon.pid || true
+    rm git-daemon.pid || true
+}
+
+run () {
+    echo '--- u1 adds rnd1'
+    cd $D/r1; random_file rnd1
+    peers - 'cd $D/r$j; git-auto-sync once'
+    peers - 'cd $D/r$j; git-auto-sync once'
+    cd $D/r2; git_log
+    diff $D/r1/rnd1 $D/r2/rnd1
+
+    echo '--- u2 changes rnd1'
+    cd $D/r2; random_file rnd1
+    peers - 'cd $D/r$j; git-auto-sync once'
+    peers - 'cd $D/r$j; git-auto-sync once'
+    cd $D/r1; git_log
+    diff $D/r1/rnd1 $D/r2/rnd1
+
+    echo '--- u1 and u2 changes rnd1'
+    cd $D/r1; random_file rnd1; cp rnd1 ../rnd1.r1-master
+    cd $D/r2; random_file rnd1; cp rnd1 ../rnd1.r2-master
+    peers - 'cd $D/r$j; git-auto-sync once'
+    peers - 'cd $D/r$j; git-auto-sync once'
+    cd $D/r1; git_log
+    diff $D/r2/rnd1.r1-master $D/rnd1.r1-master
+    diff $D/r2/rnd1.r2-master $D/rnd1.r2-master
+
+    echo test passed.
+}
+
+eval "$*"

@@ -1,0 +1,21 @@
+
+git_log_graph () { 
+    echo "(`pwd`)"
+    git log --all --graph --decorate --date-order --pretty="format:%h %ad %ae: %s$1" --stat | cat
+    echo
+}
+
+git_log () {
+    echo
+    echo $*
+    git_log_graph %d
+    echo
+}
+
+random_file () {
+    echo random_file $1
+    dd if=/dev/urandom of=$1 bs=1k count=128 2> /dev/null
+}
+
+peers () { for j in $collabs; do [ "$j" != "$1" ] && eval "$2"; done; }
+
