@@ -11,7 +11,7 @@ _local_change () {
 
     for p in $peers; do
         git push $p +$lclbranch:$lclbranch
-    done
+    done || true
 }
 
 _local_merge () {
@@ -97,6 +97,8 @@ once () {
     lclbranch=$(cat $D/branch)
     peers=$(cat $D/peers)
 
+    echo once: $lclbranch
+
     [ "$1" != "--skip-remote-change" ] && _remote_change
     _local_merge
     _local_change
@@ -129,11 +131,13 @@ run_with_inotify () {
         if [ -e $D/local-change ]; then
             rm $D/local-change
             _local_change
+            [ "$GIT_A_S_CHANGE" != "" ] && { eval "$GIT_A_S_CHANGE"; }
         fi
         if [ -e $D/remote-change ]; then
             rm $D/remote-change
             _local_merge
             _local_change
+            [ "$GIT_A_S_CHANGE" != "" ] && { eval "$GIT_A_S_CHANGE"; }
         fi
         if [ -e $D/periodic ]; then
             rm $D/periodic

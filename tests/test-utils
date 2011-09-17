@@ -13,8 +13,11 @@ git_log () {
 }
 
 random_file () {
-    echo random_file $1
-    dd if=/dev/urandom of=$1 bs=1k count=128 2> /dev/null
+    local fn=$1
+    local size=$2
+    [ "$size" = "" ] && { size=128; }
+    echo random_file $fn $size
+    dd if=/dev/urandom of=$fn bs=1k count=$size 2> /dev/null
 }
 
 peers () { for j in $collabs; do [ "$j" != "$1" ] && eval "$2"; done; }

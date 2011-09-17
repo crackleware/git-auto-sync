@@ -8,9 +8,23 @@ export PATH=$(cd ..; pwd):$(pwd):$PATH
 set -e
 
 daemon_port=39418
-collabs=$(seq 2)
 
-init () {
+start_daemon () {
+    cd $D
+    git daemon --verbose --export-all --base-path=$D --reuseaddr --pid-file=git-daemon.pid --listen=127.0.0.1 --port=$daemon_port --enable=receive-pack --detach
+}
+
+stop_daemon () {
+    cd $D
+    xargs kill < git-daemon.pid || true
+    rm git-daemon.pid || true
+}
+
+init1 () {
+    cd $D
+    echo $1 > npeers
+    npeers=$(cat npeers)
+    collabs=$(seq $npeers)
     for i in $collabs; do
         rm -rf $D/r$i || true
     done
@@ -29,16 +43,11 @@ init () {
     done
 }
 
-start_daemon () {
-    git daemon --verbose --export-all --base-path=$D --reuseaddr --pid-file=git-daemon.pid --listen=127.0.0.1 --port=$daemon_port --enable=receive-pack --detach
-}
+run1 () {
+    cd $D
+    npeers=$(cat npeers)
+    collabs=$(seq $npeers)
 
-stop_daemon () {
-    xargs kill < git-daemon.pid || true
-    rm git-daemon.pid || true
-}
-
-run () {
     echo '--- u1 adds rnd1'
     cd $D/r1; random_file rnd1
     peers - 'cd $D/r$j; git-auto-sync once'
@@ -64,5 +73,81 @@ run () {
 
     echo test passed.
 }
+
+init2 () {
+    cd $D
+    echo $1 > npeers
+    npeers=$(cat npeers)
+    collabs=$(seq $npeers)
+    for i in $collabs; do
+        rm -rf $D/r$i || true
+    done
+    for i in $collabs; do
+        mkdir -p $D/r$i
+        cd $D/r$i
+        git init
+        git config user.name u$i
+        git config user.email u$i@domain
+        git-auto-sync init r$i-master \
+            git://127.0.0.1:$daemon_port/r$((i+1)) \
+            git://127.0.0.1:$daemon_port/r$((i-1)) \
+            || true
+        if [ "$i" = "1" ]; then
+            touch 1st
+            git add 1st
+            git commit -m '1st'
+        fi
+    done
+}
+
+run2 () {
+    cd $D
+    npeers=$(cat npeers)
+    collabs=$(seq $npeers)
+
+    echo '--- u1 adds rnd1'
+    cd $D/r1; random_file rnd1
+    for i in $(seq 2); do peers - 'cd $D/r$j; git-auto-sync once'; done
+    cd $D/r$npeers; git_log
+    diff $D/r1/rnd1 $D/r$npeers/rnd1
+
+    echo test passed.
+}
+
+run3 () {
+    cd $D
+    npeers=$(cat npeers)
+    collabs=$(seq $npeers)
+
+    echo '--- u1 adds huge rnd1'
+    cd $D/r1; random_file rnd1 100000
+    t () {
+        for i in $(seq 2); do peers - 'cd $D/r$j; git-auto-sync once'; done
+    }; time t
+    cd $D/r$npeers; git_log
+    diff $D/r1/rnd1 $D/r$npeers/rnd1
+
+    echo '--- u1 appends small data to end of rnd1'
+    cd $D/r1; date >> rnd1
+    t () {
+        for i in $(seq 2); do peers - 'cd $D/r$j; git-auto-sync once'; done
+    }; time t
+    cd $D/r$npeers; git_log
+    diff $D/r1/rnd1 $D/r$npeers/rnd1
+
+    echo test passed.
+}
+
+test_runner() {
+    local olddir=$(pwd)
+    start_daemon
+    eval "$*" || true
+    stop_daemon
+    cd $olddir
+}
+
+test1 () { test_runner '{ init1 2 && run1; }'; }
+test2 () { test_runner '{ init2 5 && run2; }'; }
+test3 () { test_runner '{ init1 2 && run3; }'; }
 
 eval "$*"
