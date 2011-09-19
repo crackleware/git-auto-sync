@@ -68,4 +68,5 @@ If you don't have inotify-tools installed:
 ### Related
 
 - rsync, unison, dropbox, ...
+- https://github.com/kinkerl/persy - personal synchronization application - based on git
 
